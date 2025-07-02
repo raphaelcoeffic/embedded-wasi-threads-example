@@ -52,7 +52,7 @@ public:
       return false;
     }
 
-    std::cout << "Loaded WASM file: " << filename << " (" << size << " bytes)"
+    std::cout << "WASM file loaded: " << filename << " (" << size << " bytes)"
               << std::endl;
 
     // Load WASM module
@@ -135,16 +135,6 @@ public:
       std::cerr << "Neither _start nor main function found" << std::endl;
       return false;
     }
-
-    // Execute the function
-    // wasm_val_t results[1] = {0};
-    wasm_val_t args[2] = {}; // For main(int argc, char** argv)
-
-    // Set up argc and argv if calling main
-    args[0].kind = WASM_I32;
-    args[0].of.i32 = 0; // argc
-    args[1].kind = WASM_I32;
-    args[1].of.i32 = 0; // argv (null pointer)
 
     std::cout << "Executing WASM function..." << std::endl;
 
