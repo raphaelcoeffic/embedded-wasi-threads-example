@@ -39,9 +39,9 @@ target_include_directories(wamr_runner PRIVATE
 # Compiler flags
 target_compile_options(wamr_runner PRIVATE -Wall -Wextra)
 
-# Compile WASM module
-set(WASM_MODULE_DIR ${CMAKE_SOURCE_DIR}/wasm_module)
-add_custom_target(wasm_module ALL
-  COMMAND make -C ${WASM_MODULE_DIR}
-  COMMAND cp ${WASM_MODULE_DIR}/module.wasm ${CMAKE_BINARY_DIR}
-)
+# WASM module CMake
+set(wasm_source_dir "${CMAKE_SOURCE_DIR}/wasm-module")
+include(${wasm_source_dir}/wasm-module.cmake)
+
+# Make sure WASM module is built before the runner
+add_dependencies(wamr_runner wasm_module)
