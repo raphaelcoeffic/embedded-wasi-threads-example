@@ -12,6 +12,7 @@ private:
   wasm_module_t module = nullptr;
   wasm_module_inst_t module_inst = nullptr;
   wasm_exec_env_t exec_env = nullptr;
+  std::vector<uint8_t> wasm_bytes;
 
 public:
   ~WAMRRunner() { cleanup(); }
@@ -44,8 +45,8 @@ public:
 
     std::streamsize size = file.tellg();
     file.seekg(0, std::ios::beg);
+    wasm_bytes.resize(size);
 
-    std::vector<uint8_t> wasm_bytes(size);
     if (!file.read(reinterpret_cast<char *>(wasm_bytes.data()), size)) {
       std::cerr << "Failed to read WASM file" << std::endl;
       return false;
