@@ -1,153 +1,110 @@
 #include <cstring>
 #include <fstream>
 #include <iostream>
-#include <vector>
 
 // WAMR headers
-#include "wasm_runtime.h"
-#include "wasm_runtime_common.h"
+#include "wasm_c_api.h"
+#include "wasm_export.h"
 
 class WAMRRunner {
 private:
-  wasm_module_t module = nullptr;
-  wasm_module_inst_t module_inst = nullptr;
-  wasm_exec_env_t exec_env = nullptr;
-  std::vector<uint8_t> wasm_bytes;
+  wasm_engine_t* engine = nullptr;
+  wasm_store_t *store = nullptr;
+
+  wasm_extern_vec_t exports;
+  const wasm_func_t* run_func = nullptr;
 
 public:
   ~WAMRRunner() { cleanup(); }
 
   bool initialize() {
-    // Initialize WAMR runtime with threading support
-    RuntimeInitArgs init_args;
-    memset(&init_args, 0, sizeof(RuntimeInitArgs));
+    engine = wasm_engine_new();
+    store = wasm_store_new(engine);
 
-    // Enable threading support for WASI threads
-    init_args.mem_alloc_type = Alloc_With_System_Allocator;
-    init_args.max_thread_num = 4; // Allow up to 4 threads
-
-    if (!wasm_runtime_full_init(&init_args)) {
+    if (!engine || !store) {
       std::cerr << "Failed to initialize WAMR runtime" << std::endl;
       return false;
     }
 
-    std::cout << "WAMR runtime initialized successfully" << std::endl;
+    wasm_runtime_set_log_level(WASM_LOG_LEVEL_WARNING);
     return true;
   }
 
   bool loadWasmFile(const std::string &filename) {
-    // Read WASM file
+
+    if (!engine || !store) return false;
+    
     std::ifstream file(filename, std::ios::binary | std::ios::ate);
     if (!file.is_open()) {
       std::cerr << "Failed to open WASM file: " << filename << std::endl;
       return false;
     }
 
-    std::streamsize size = file.tellg();
+    std::streamsize file_size = file.tellg();
     file.seekg(0, std::ios::beg);
-    wasm_bytes.resize(size);
 
-    if (!file.read(reinterpret_cast<char *>(wasm_bytes.data()), size)) {
+    wasm_byte_vec_t binary;
+    wasm_byte_vec_new_uninitialized(&binary, file_size);
+
+    if (!file.read(binary.data, file_size)) {
+      wasm_byte_vec_delete(&binary);
       std::cerr << "Failed to read WASM file" << std::endl;
       return false;
     }
 
-    std::cout << "WASM file loaded: " << filename << " (" << size << " bytes)"
-              << std::endl;
-
     // Load WASM module
-    char error_buf[128];
-    module = wasm_runtime_load(wasm_bytes.data(), wasm_bytes.size(), error_buf,
-                               sizeof(error_buf));
+    wasm_module_t* module = wasm_module_new(store, &binary);
+    wasm_byte_vec_delete(&binary);
+
     if (!module) {
-      std::cerr << "Failed to load WASM module: " << error_buf << std::endl;
+      std::cerr << "Failed to load WASM module" << std::endl;
       return false;
     }
 
-    std::cout << "WASM module loaded successfully" << std::endl;
-    return true;
-  }
-
-  bool instantiateModule() {
-    char error_buf[128];
-
-    // Set up WASI arguments (optional)
-    const char *wasi_dir_list[] = {"."}; // Map current directory
-    uint32_t wasi_dir_list_size = 1;
-    const char *wasi_env_list[] = {"PATH=/bin:/usr/bin"};
-    uint32_t wasi_env_list_size = 1;
-    const char *wasi_argv[] = {"wasm_program"};
-    uint32_t wasi_argc = 1;
-
-    // Create module instance with WASI support
-    module_inst = wasm_runtime_instantiate(module,
-                                           65536, // stack size (64KB)
-                                           65536, // heap size (64KB)
-                                           error_buf, sizeof(error_buf));
-
-    if (!module_inst) {
-      std::cerr << "Failed to instantiate WASM module: " << error_buf
-                << std::endl;
+    wasm_instance_t* instance = wasm_instance_new(store, module, nullptr, nullptr);
+    if (!instance) {
+      wasm_module_delete(module);
+      std::cerr << "Failed to instantiate WASM module" << std::endl;
       return false;
     }
 
-    // Initialize WASI environment
-    if (!wasm_runtime_init_wasi(module_inst,
-                                wasi_dir_list, wasi_dir_list_size,
-                                nullptr, 0, // map_dir_list
-                                wasi_env_list, wasi_env_list_size,
-                                nullptr, 0, // addr_poll
-                                nullptr, 0, // ns_lookup_pool
-                                (char **)wasi_argv, wasi_argc,
-                                -1, -1, -1, // stdin, stdout, stderr (use default)
-                                error_buf, sizeof(error_buf))) {
-      std::cerr << "Failed to initialize WASI: " << error_buf << std::endl;
+    wasm_exporttype_vec_t export_types;
+    wasm_module_exports(module, &export_types);
+    wasm_instance_exports(instance, &exports);
+
+    for (size_t i = 0; i < exports.num_elems; i++) {
+      wasm_extern_t *exp = exports.data[i];
+      if (wasm_extern_kind(exp) != WASM_EXTERN_FUNC)
+        continue;
+
+      const wasm_name_t* name = wasm_exporttype_name(export_types.data[i]);
+      if (name && !strncmp(name->data, "_start", name->num_elems)) {
+        run_func = wasm_extern_as_func(exp);
+        break;
+      }
+    }
+    wasm_exporttype_vec_delete(&export_types);
+    wasm_instance_delete(instance);
+    wasm_module_delete(module);
+
+    if (!run_func) {
+      std::cerr << "Failed to find _start function" << std::endl;
       return false;
     }
 
-    std::cout << "WASM module instantiated with WASI support" << std::endl;
-    return true;
-  }
-
-  bool createExecutionEnvironment() {
-    // Create execution environment with threading support
-    exec_env = wasm_runtime_create_exec_env(module_inst, 65536); // 64KB stack
-    if (!exec_env) {
-      std::cerr << "Failed to create execution environment" << std::endl;
-      return false;
-    }
-
-    std::cout << "Execution environment created" << std::endl;
     return true;
   }
 
   bool runMainFunction() {
-    // Look for _start function (WASI entry point)
-    wasm_function_inst_t start_func =
-        wasm_runtime_lookup_function(module_inst, "_start");
-
-    if (!start_func) {
-      // Fallback to main function
-      start_func = wasm_runtime_lookup_function(module_inst, "main");
-    }
-
-    if (!start_func) {
-      std::cerr << "Neither _start nor main function found" << std::endl;
-      return false;
-    }
-
     std::cout << "Executing WASM function..." << std::endl;
 
-    if (!wasm_runtime_call_wasm(exec_env, start_func, 0, nullptr)) {
-      // Check for exception
-      const char *exception = wasm_runtime_get_exception(module_inst);
-      if (exception) {
-        std::cerr << "WASM execution failed with exception: " << exception
-                  << std::endl;
-      } else {
-        std::cerr << "WASM execution failed" << std::endl;
-      }
-      return false;
+    wasm_val_vec_t args = WASM_EMPTY_VEC;
+    wasm_val_vec_t results = WASM_EMPTY_VEC;
+    wasm_trap_t *trap = wasm_func_call(run_func, &args, &results);
+    if (trap) {
+        std::cerr << "Error calling function!" << std::endl;
+        wasm_trap_delete(trap);
+        return false;
     }
 
     std::cout << "WASM execution completed successfully" << std::endl;
@@ -155,22 +112,12 @@ public:
   }
 
   void cleanup() {
-    if (exec_env) {
-      wasm_runtime_destroy_exec_env(exec_env);
-      exec_env = nullptr;
-    }
+    wasm_extern_vec_delete(&exports);
+    wasm_store_delete(store);
+    wasm_engine_delete(engine);
+    store = nullptr;
+    engine = nullptr;
 
-    if (module_inst) {
-      wasm_runtime_deinstantiate(module_inst);
-      module_inst = nullptr;
-    }
-
-    if (module) {
-      wasm_runtime_unload(module);
-      module = nullptr;
-    }
-
-    wasm_runtime_destroy();
     std::cout << "WAMR runtime cleaned up" << std::endl;
   }
 };
@@ -188,18 +135,8 @@ int main(int argc, char *argv[]) {
     return 1;
   }
 
-  // Load WASM file
+  // Load WASM module
   if (!runner.loadWasmFile(argv[1])) {
-    return 1;
-  }
-
-  // Instantiate module
-  if (!runner.instantiateModule()) {
-    return 1;
-  }
-
-  // Create execution environment
-  if (!runner.createExecutionEnvironment()) {
     return 1;
   }
 
