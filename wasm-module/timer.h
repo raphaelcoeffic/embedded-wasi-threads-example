@@ -25,6 +25,9 @@ struct timer_handle_t {
   std::atomic_bool active;
 };
 
+#define TIMER_INITIALIZER \
+  { .func = nullptr, .name = nullptr }
+
 struct timer_async_call_t {
   timer_async_func_t func;
   void *param1;

@@ -1,39 +1,66 @@
+#include <cassert>
 #include <cstring>
 #include <fstream>
 #include <iostream>
+#include <stdexcept>
+#include <thread>
+
+using namespace std::chrono_literals;
 
 // WAMR headers
-#include "wasm_c_api.h"
 #include "wasm_export.h"
+
 
 class WAMRRunner {
 private:
-  wasm_engine_t* engine = nullptr;
-  wasm_store_t *store = nullptr;
+  std::shared_ptr<void> wamr_init;
+  std::vector<uint8_t> binary;
+  std::shared_ptr<WASMModuleCommon> module;
+  std::shared_ptr<WASMModuleInstanceCommon> module_inst;
+  std::shared_ptr<WASMExecEnv> exec_env;
 
-  wasm_extern_vec_t exports;
-  const wasm_func_t* run_func = nullptr;
+  // wasm_extern_vec_t exports;
+  wasm_function_inst_t start_func = nullptr;
+  wasm_function_inst_t get_counters_func = nullptr;
+  // wasm_function_inst_t get_num_counters_func = nullptr;
+  wasm_function_inst_t create_timers_func = nullptr;
+  wasm_function_inst_t start_timers_func = nullptr;
+  wasm_function_inst_t stop_timers_func = nullptr;
+  wasm_function_inst_t cleanup_func = nullptr;
+
+  wasm_function_inst_t lookup_function(const char *func_name) {
+    return wasm_runtime_lookup_function(module_inst.get(), func_name);
+  }
+
+  void function_call0(wasm_function_inst_t func) {
+    if (!func) {
+      throw std::invalid_argument("function is null");
+    }
+    uint32_t argv[0];
+    if (!wasm_runtime_call_wasm(exec_env.get(), func, 0, argv)) {
+      throw std::runtime_error(wasm_runtime_get_exception(module_inst.get()));
+    }
+  }
 
 public:
-  ~WAMRRunner() { cleanup(); }
 
+  WAMRRunner() {}; // TODO: singleton?
+  WAMRRunner(const WAMRRunner&) = delete;
+  WAMRRunner(WAMRRunner&&) = delete;
+  
   bool initialize() {
-    engine = wasm_engine_new();
-    store = wasm_store_new(engine);
 
-    if (!engine || !store) {
-      std::cerr << "Failed to initialize WAMR runtime" << std::endl;
-      return false;
-    }
-
+    wasm_runtime_init();
+    wamr_init = {(void*)1, [](void*){wasm_runtime_destroy();}};
     wasm_runtime_set_log_level(WASM_LOG_LEVEL_WARNING);
+
     return true;
   }
 
   bool loadWasmFile(const std::string &filename) {
 
-    if (!engine || !store) return false;
-    
+    if (!wamr_init) return false;
+
     std::ifstream file(filename, std::ios::binary | std::ios::ate);
     if (!file.is_open()) {
       std::cerr << "Failed to open WASM file: " << filename << std::endl;
@@ -42,84 +69,99 @@ public:
 
     std::streamsize file_size = file.tellg();
     file.seekg(0, std::ios::beg);
+    binary.resize(file_size);
 
-    wasm_byte_vec_t binary;
-    wasm_byte_vec_new_uninitialized(&binary, file_size);
-
-    if (!file.read(binary.data, file_size)) {
-      wasm_byte_vec_delete(&binary);
+    if (!file.read((char*)binary.data(), binary.size())) {
       std::cerr << "Failed to read WASM file" << std::endl;
       return false;
     }
 
     // Load WASM module
-    wasm_module_t* module = wasm_module_new(store, &binary);
-    wasm_byte_vec_delete(&binary);
+    char error_buf[128];
+    module = {wasm_runtime_load(binary.data(), binary.size(), error_buf,
+                                sizeof(error_buf)),
+              wasm_runtime_unload};
 
     if (!module) {
       std::cerr << "Failed to load WASM module" << std::endl;
       return false;
     }
 
-    wasm_instance_t* instance = wasm_instance_new(store, module, nullptr, nullptr);
-    if (!instance) {
-      wasm_module_delete(module);
+    uint32_t stack_size = 64 * 1024;
+    uint32_t heap_size = 64 * 1024;
+    module_inst = {wasm_runtime_instantiate(module.get(), stack_size, heap_size,
+                                            error_buf, sizeof(error_buf)),
+                   wasm_runtime_deinstantiate};
+    if (!module_inst) {
       std::cerr << "Failed to instantiate WASM module" << std::endl;
       return false;
     }
 
-    wasm_exporttype_vec_t export_types;
-    wasm_module_exports(module, &export_types);
-    wasm_instance_exports(instance, &exports);
-
-    for (size_t i = 0; i < exports.num_elems; i++) {
-      wasm_extern_t *exp = exports.data[i];
-      if (wasm_extern_kind(exp) != WASM_EXTERN_FUNC)
-        continue;
-
-      const wasm_name_t* name = wasm_exporttype_name(export_types.data[i]);
-      if (name && !strncmp(name->data, "_start", name->num_elems)) {
-        run_func = wasm_extern_as_func(exp);
-        break;
-      }
+    exec_env = {wasm_runtime_create_exec_env(module_inst.get(), stack_size),
+                wasm_runtime_destroy_exec_env};
+    if (!exec_env) {
+      std::cerr << "Failed to create execution environment" << std::endl;
+      return false;
     }
-    wasm_exporttype_vec_delete(&export_types);
-    wasm_instance_delete(instance);
-    wasm_module_delete(module);
 
-    if (!run_func) {
-      std::cerr << "Failed to find _start function" << std::endl;
+    start_func = lookup_function("_start");
+    get_counters_func = lookup_function("get_counters");
+    create_timers_func = lookup_function("create_timers");
+    start_timers_func = lookup_function("start_timers");
+    stop_timers_func = lookup_function("stop_timers");
+    cleanup_func = lookup_function("cleanup");
+
+    if (!start_func || !get_counters_func || !create_timers_func ||
+        !start_timers_func || !stop_timers_func || !cleanup_func) {
+      std::cerr << "Failed to find one or more exported function(s)"
+                << std::endl;
       return false;
     }
 
     return true;
   }
 
-  bool runMainFunction() {
-    std::cout << "Executing WASM function..." << std::endl;
+  void start() {
+    std::cout << "Executing _start function..." << std::endl;
+    function_call0(start_func);
+  }
 
-    wasm_val_vec_t args = WASM_EMPTY_VEC;
-    wasm_val_vec_t results = WASM_EMPTY_VEC;
-    wasm_trap_t *trap = wasm_func_call(run_func, &args, &results);
-    if (trap) {
-        std::cerr << "Error calling function!" << std::endl;
-        wasm_trap_delete(trap);
-        return false;
+  void get_counters(std::vector<uint32_t> &counters) {
+    // Allocate memory in WASM sandbox for the output parameters
+    uint32_t* p_ptr = nullptr;
+    uint32_t* p_len = nullptr;
+    uint32_t wasm_ptr_addr = wasm_runtime_module_malloc(module_inst.get(), sizeof(uint32_t), (void**)&p_ptr);
+    uint32_t wasm_len_addr = wasm_runtime_module_malloc(module_inst.get(), sizeof(size_t), (void**)&p_len);
+
+    if (!wasm_ptr_addr || !wasm_len_addr) {
+      throw std::runtime_error("failed to allocate memory");
     }
 
-    std::cout << "WASM execution completed successfully" << std::endl;
-    return true;
+    *p_ptr = *p_len = 0;
+
+    uint32_t argv[2];
+    argv[0] = wasm_ptr_addr;
+    argv[1] = wasm_len_addr;
+
+    bool ok = wasm_runtime_call_wasm(exec_env.get(), get_counters_func, 2, argv);
+    if (ok) {
+      counters.resize(*p_len);
+      void* p_native = wasm_runtime_addr_app_to_native(module_inst.get(), *p_ptr);
+      memcpy(counters.data(), p_native, *p_len * sizeof(uint32_t));
+    }
+
+    wasm_runtime_module_free(module_inst.get(), wasm_ptr_addr);
+    wasm_runtime_module_free(module_inst.get(), wasm_len_addr);
+
+    if (!ok) {
+      throw std::runtime_error(wasm_runtime_get_exception(module_inst.get()));
+    }
   }
 
-  void cleanup() {
-    wasm_extern_vec_delete(&exports);
-    wasm_store_delete(store);
-    wasm_engine_delete(engine);
-    store = nullptr;
-    engine = nullptr;
-
-    std::cout << "WAMR runtime cleaned up" << std::endl;
-  }
+  void create_timers() { function_call0(create_timers_func); }
+  void start_timers() { function_call0(start_timers_func); }
+  void stop_timers() { function_call0(stop_timers_func); }
+  void cleanup() { function_call0(cleanup_func); }
 };
 
 int main(int argc, char *argv[]) {
@@ -128,21 +170,36 @@ int main(int argc, char *argv[]) {
     return 1;
   }
 
-  WAMRRunner runner;
-
   // Initialize WAMR
+  WAMRRunner runner;
   if (!runner.initialize()) {
     return 1;
   }
+  std::cout << "WAMR initialised" << std::endl;
 
   // Load WASM module
   if (!runner.loadWasmFile(argv[1])) {
     return 1;
   }
+  std::cout << "WASM module loaded" << std::endl;
 
-  // Run the main function
-  if (!runner.runMainFunction()) {
-    return 1;
+  runner.create_timers();
+  runner.start_timers();
+
+  std::cout << "sleep 2000ms..." << std::endl;
+  std::this_thread::sleep_for(2000ms);
+  std::cout << "...done" << std::endl;
+
+  runner.stop_timers();
+  std::cout << "cleanup" << std::endl;
+  runner.cleanup();
+
+  std::vector<uint32_t> counters;
+  runner.get_counters(counters);
+
+  std::cout << "counters:" << std::endl;
+  for (auto counter : counters) {
+    std::cout << " -> " << counter << std::endl;
   }
 
   return 0;
