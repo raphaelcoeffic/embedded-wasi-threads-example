@@ -38,7 +38,9 @@ target_include_directories(wamr_runner PRIVATE
 target_compile_options(wamr_runner PRIVATE -Wall -Wextra)
 
 # Linker flags
-target_link_options(wamr_runner PRIVATE -z noexecstack)
+if (CMAKE_CXX_COMPILER_ID STREQUAL "GNU")
+    target_link_options(wamr_runner PRIVATE -z noexecstack)
+endif()
 
 # WASM module CMake
 set(wasm_source_dir "${CMAKE_SOURCE_DIR}/wasm-module")
