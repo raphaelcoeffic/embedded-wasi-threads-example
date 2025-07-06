@@ -41,3 +41,7 @@ find_package_handle_standard_args(WasiSDK
 mark_as_advanced(
     WasiSDK_ROOT_DIR
 )
+
+if(WasiSDK_FOUND)
+    set(WASI_SDK_PATH ${WasiSDK_ROOT_DIR})
+endif()

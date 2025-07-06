@@ -14,7 +14,7 @@ include(ExternalProject)
 # Prepare CMAKE_ARGS for external project
 set(wasm_cmake_args
     -DCMAKE_BUILD_TYPE=${WASM_MODULE_BUILD_TYPE}
-    -DCMAKE_TOOLCHAIN_FILE=${WasiSDK_ROOT_DIR}/share/cmake/wasi-sdk-pthread.cmake
+    -DCMAKE_TOOLCHAIN_FILE=${WASI_SDK_PATH}/share/cmake/wasi-sdk-pthread.cmake
 )
 
 ExternalProject_Add(wasm_module_build

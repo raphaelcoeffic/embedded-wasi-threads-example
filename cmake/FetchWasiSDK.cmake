@@ -37,3 +37,5 @@ FetchContent_Declare(
 )
 
 FetchContent_MakeAvailable(WasiSDK)
+
+set(WASI_SDK_PATH ${wasisdk_SOURCE_DIR})
