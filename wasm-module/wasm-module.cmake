@@ -4,19 +4,18 @@ set(WASM_MODULE_BUILD_TYPE "Debug" CACHE STRING "Build type for WASM module (Deb
 set(wasm_build_dir "${CMAKE_BINARY_DIR}/wasm")
 set(wasm_binary "${wasm_build_dir}/module.wasm")
 
+# Find or download WASI SDK
+include(FetchWasiSDK)
+find_package(WasiSDK REQUIRED)
+
 # Build WASM module using external project
 include(ExternalProject)
 
 # Prepare CMAKE_ARGS for external project
 set(wasm_cmake_args
     -DCMAKE_BUILD_TYPE=${WASM_MODULE_BUILD_TYPE}
-    -DCMAKE_TOOLCHAIN_FILE=${wasm_source_dir}/wasi-toolchain.cmake
+    -DCMAKE_TOOLCHAIN_FILE=${WasiSDK_ROOT_DIR}/share/cmake/wasi-sdk-pthread.cmake
 )
-
-# Pass WASI_SDK_PATH if specified
-if(DEFINED WASI_SDK_PATH AND WASI_SDK_PATH)
-    list(APPEND wasm_cmake_args -DWASI_SDK_PATH=${WASI_SDK_PATH})
-endif()
 
 ExternalProject_Add(wasm_module_build
     SOURCE_DIR ${wasm_source_dir}
