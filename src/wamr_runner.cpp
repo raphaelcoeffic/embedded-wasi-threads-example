@@ -21,10 +21,8 @@ private:
   std::shared_ptr<WASMModuleInstanceCommon> module_inst;
   std::shared_ptr<WASMExecEnv> exec_env;
 
-  // wasm_extern_vec_t exports;
-  wasm_function_inst_t start_func = nullptr;
+  wasm_function_inst_t call_ctors_func = nullptr;
   wasm_function_inst_t get_counters_func = nullptr;
-  // wasm_function_inst_t get_num_counters_func = nullptr;
   wasm_function_inst_t create_timers_func = nullptr;
   wasm_function_inst_t start_timers_func = nullptr;
   wasm_function_inst_t stop_timers_func = nullptr;
@@ -42,6 +40,18 @@ private:
     if (!wasm_runtime_call_wasm(exec_env.get(), func, 0, argv)) {
       throw std::runtime_error(wasm_runtime_get_exception(module_inst.get()));
     }
+  }
+
+  static void free_module(WASMModuleCommon* module) {
+    if (module) wasm_runtime_unload(module);
+  }
+
+  static void free_module_inst(WASMModuleInstanceCommon* module_inst) {
+    if (module_inst) wasm_runtime_deinstantiate(module_inst);
+  }
+
+  static void free_exec_env(WASMExecEnv* exec_env) {
+    if (exec_env) wasm_runtime_destroy_exec_env(exec_env);
   }
 
 public:
@@ -82,7 +92,7 @@ public:
     char error_buf[128];
     module = {wasm_runtime_load(binary.data(), binary.size(), error_buf,
                                 sizeof(error_buf)),
-              wasm_runtime_unload};
+              free_module};
 
     if (!module) {
       std::cerr << "Failed to load WASM module" << std::endl;
@@ -93,7 +103,7 @@ public:
     uint32_t heap_size = 64 * 1024;
     module_inst = {wasm_runtime_instantiate(module.get(), stack_size, heap_size,
                                             error_buf, sizeof(error_buf)),
-                   wasm_runtime_deinstantiate};
+                   free_module_inst};
     if (!module_inst) {
       std::cerr << "Failed to instantiate WASM module" << std::endl;
       return false;
@@ -106,14 +116,14 @@ public:
       return false;
     }
 
-    start_func = lookup_function("_start");
+    call_ctors_func = lookup_function("__wasm_call_ctors");
     get_counters_func = lookup_function("get_counters");
     create_timers_func = lookup_function("create_timers");
     start_timers_func = lookup_function("start_timers");
     stop_timers_func = lookup_function("stop_timers");
     cleanup_func = lookup_function("cleanup");
 
-    if (!start_func || !get_counters_func || !create_timers_func ||
+    if (!call_ctors_func || !get_counters_func || !create_timers_func ||
         !start_timers_func || !stop_timers_func || !cleanup_func) {
       std::cerr << "Failed to find one or more exported function(s)"
                 << std::endl;
@@ -124,8 +134,8 @@ public:
   }
 
   void start() {
-    std::cout << "Executing _start function..." << std::endl;
-    function_call0(start_func);
+    std::cout << "Executing __wasm_call_ctors" << std::endl;
+    function_call0(call_ctors_func);
   }
 
   void get_counters(std::vector<uint32_t> &counters) {
@@ -184,6 +194,8 @@ int main(int argc, char *argv[]) {
     return 1;
   }
   std::cout << "WASM module loaded" << std::endl;
+
+  runner.start();
 
   runner.create_timers();
   runner.start_timers();

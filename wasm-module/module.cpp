@@ -52,16 +52,3 @@ void WASM_EXPORT(cleanup)() {
   TRACE("cleanup");
   timer_queue::destroy();
 }
-
-int main() {
-  using namespace std::chrono_literals;
-
-  create_timers();
-  start_timers();
-
-  TRACE("sleep 2000ms...");
-  std::this_thread::sleep_for(2000ms);
-
-  stop_timers();
-  cleanup();
-}

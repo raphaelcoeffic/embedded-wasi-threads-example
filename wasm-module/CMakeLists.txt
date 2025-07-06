@@ -2,7 +2,7 @@ cmake_minimum_required(VERSION 3.16)
 project(wasm_threaded_program)
 
 set(SOURCES
-    main.cpp
+    module.cpp
     timer.cpp
 )
 
@@ -22,7 +22,13 @@ set(WASM_LINK_FLAGS
     -Wl,--import-memory
     -Wl,--export-memory
     -Wl,--max-memory=1048576
+    -Wl,--no-entry
     -Wl,--gc-sections
+    # enable runtime to check stack / heap
+    -Wl,--export=__heap_base,--export=__data_end
+    -Wl,--export=malloc -Wl,--export=free
+    # static init
+    -Wl,--export=__wasm_call_ctors
 )
 
 # Debug vs Release flags
