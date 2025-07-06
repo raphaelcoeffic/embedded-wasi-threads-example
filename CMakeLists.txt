@@ -9,22 +9,18 @@ set(CMAKE_EXPORT_COMPILE_COMMANDS ON)
 
 list(APPEND CMAKE_MODULE_PATH "${CMAKE_CURRENT_LIST_DIR}/cmake")
 
-# Build WAMR installation from source
-set(WAMR_ROOT_DIR ${CMAKE_SOURCE_DIR}/wasm-micro-runtime)
-
 # WAMR build configuration
-string(TOLOWER ${CMAKE_HOST_SYSTEM_NAME} WAMR_BUILD_PLATFORM)
 set(WAMR_BUILD_INTERP 1)
 set(WAMR_BUILD_FAST_INTERP 1)
 set(WAMR_BUILD_AOT 1)
 set(WAMR_BUILD_LIBC_BUILTIN 1)
 set(WAMR_BUILD_LIBC_WASI 1)
 set(WAMR_BUILD_LIB_WASI_THREADS 1)
+set(WAMR_BUILD_SIMD 0)
 set(WAMR_BUILD_REF_TYPES 1)
 
 # Include WAMR
-include(${WAMR_ROOT_DIR}/build-scripts/runtime_lib.cmake)
-add_library(vmlib ${WAMR_RUNTIME_LIB_SOURCE})
+add_subdirectory(wasm-micro-runtime)
 
 # Create executable
 add_executable(wamr_runner src/wamr_runner.cpp)
