@@ -22,6 +22,7 @@ private:
   std::shared_ptr<WASMExecEnv> exec_env;
 
   wasm_function_inst_t call_ctors_func = nullptr;
+  wasm_function_inst_t get_module_name_func = nullptr;
   wasm_function_inst_t get_counters_func = nullptr;
   wasm_function_inst_t create_timers_func = nullptr;
   wasm_function_inst_t start_timers_func = nullptr;
@@ -117,14 +118,16 @@ public:
     }
 
     call_ctors_func = lookup_function("__wasm_call_ctors");
+    get_module_name_func = lookup_function("get_module_name");
     get_counters_func = lookup_function("get_counters");
     create_timers_func = lookup_function("create_timers");
     start_timers_func = lookup_function("start_timers");
     stop_timers_func = lookup_function("stop_timers");
     cleanup_func = lookup_function("cleanup");
 
-    if (!call_ctors_func || !get_counters_func || !create_timers_func ||
-        !start_timers_func || !stop_timers_func || !cleanup_func) {
+    if (!call_ctors_func || !get_module_name_func || !get_counters_func ||
+        !create_timers_func || !start_timers_func || !stop_timers_func ||
+        !cleanup_func) {
       std::cerr << "Failed to find one or more exported function(s)"
                 << std::endl;
       return false;
@@ -136,6 +139,18 @@ public:
   void start() {
     std::cout << "Executing __wasm_call_ctors" << std::endl;
     function_call0(call_ctors_func);
+  }
+
+  std::string get_module_name() {
+    wasm_val_t args[0];
+    wasm_val_t results[1] = { { .kind = WASM_I32, .of.i32 = 0 } };
+    if (!wasm_runtime_call_wasm_a(exec_env.get(), get_module_name_func, 1, results, 0, args)) {
+      throw std::runtime_error(wasm_runtime_get_exception(module_inst.get()));    
+    }
+
+    // TODO: validate pointer / range ?
+    const char* name = (const char*)wasm_runtime_addr_app_to_native(module_inst.get(), results[0].of.i32);
+    return std::string(name);
   }
 
   void get_counters(std::vector<uint32_t> &counters) {
@@ -196,6 +211,8 @@ int main(int argc, char *argv[]) {
   std::cout << "WASM module loaded" << std::endl;
 
   runner.start();
+
+  std::cout << "Module name: " << runner.get_module_name() << std::endl;
 
   runner.create_timers();
   runner.start_timers();

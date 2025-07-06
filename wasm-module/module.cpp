@@ -21,6 +21,10 @@ void timer_func(timer_handle_t *h, int idx) {
 void timer_func1(timer_handle_t *h) { timer_func(h, 0); }
 void timer_func2(timer_handle_t *h) { timer_func(h, 1); }
 
+const char* WASM_EXPORT(get_module_name)() {
+  return "WASI test module";
+}
+
 void WASM_EXPORT(get_counters)(uint32_t** p_counters, size_t* len) {
   TRACE("counters[0] = %u", counters[0]);
   TRACE("counters[1] = %u", counters[1]);
