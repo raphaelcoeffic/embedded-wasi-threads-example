@@ -11,6 +11,7 @@ using namespace std::chrono_literals;
 
 // WAMR headers
 #include "wasm_export.h"
+#include "wasm_c_api.h"
 
 
 class WAMRRunner {
@@ -143,7 +144,7 @@ public:
 
   std::string get_module_name() {
     wasm_val_t args[0];
-    wasm_val_t results[1] = { { .kind = WASM_I32, .of.i32 = 0 } };
+    wasm_val_t results[1] = { WASM_I32_VAL(0) };
     if (!wasm_runtime_call_wasm_a(exec_env.get(), get_module_name_func, 1, results, 0, args)) {
       throw std::runtime_error(wasm_runtime_get_exception(module_inst.get()));    
     }

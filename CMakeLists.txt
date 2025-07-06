@@ -41,6 +41,9 @@ target_include_directories(wamr_runner PRIVATE
 # Compiler flags
 target_compile_options(wamr_runner PRIVATE -Wall -Wextra)
 
+# Linker flags
+target_link_options(wamr_runner PRIVATE -z noexecstack)
+
 # WASM module CMake
 set(wasm_source_dir "${CMAKE_SOURCE_DIR}/wasm-module")
 include(${wasm_source_dir}/wasm-module.cmake)
