@@ -21,7 +21,7 @@ set(WASM_COMMON_FLAGS
 set(WASM_LINK_FLAGS
     -Wl,--import-memory
     -Wl,--export-memory
-    -Wl,--max-memory=1048576
+    -Wl,--max-memory=2147483648
     -Wl,--no-entry
     -Wl,--gc-sections
     # enable runtime to check stack / heap

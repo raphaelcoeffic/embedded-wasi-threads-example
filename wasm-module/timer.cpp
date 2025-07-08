@@ -2,12 +2,16 @@
 #include "log.h"
 
 #include <algorithm>
+#include <future>
 #include <mutex>
 
 using lock_guard = std::lock_guard<std::mutex>;
 using unique_lock = std::unique_lock<std::mutex>;
 
+using namespace std::chrono_literals;
+
 static timer_queue* _instance = nullptr;
+static std::future<void> _async_stop;
 static std::mutex _instance_mut;
 
 bool _timer_cmp(timer_handle_t *lh, timer_handle_t *rh) {
@@ -38,11 +42,33 @@ timer_queue& timer_queue::instance()
 void timer_queue::destroy()
 {
   lock_guard lock(_instance_mut);
-  if (_instance) {
-    _instance->stop();
-    delete _instance;
-    _instance = nullptr;
+  if (_instance) { _instance->stop(); }
+  delete _instance;
+  _instance = nullptr;
+}
+
+bool timer_queue::async_destroy()
+{
+  std::unique_lock<std::mutex> lock(_instance_mut, std::try_to_lock);
+  if(!lock.owns_lock()) {
+    return false;  
   }
+
+  if (_instance) {
+    if (_instance->_running) {
+      if (!_instance->async_stop() || _async_stop.valid()) {
+        return false;
+      }
+      _async_stop =
+          std::async(std::launch::async, []() { _instance->_thread->join(); });
+    } else if (_async_stop.valid() &&
+               _async_stop.wait_for(0s) == std::future_status::ready) {
+      delete _instance;
+      _instance = nullptr;
+    }
+  }
+
+  return _instance == nullptr;
 }
 
 void timer_queue::start()
@@ -55,13 +81,10 @@ void timer_queue::start()
 }
 
 void timer_queue::stop() {
-  bool stopping = false;
-
   unique_lock lock(_cmds_mutex);
   unique_lock slock(_stop_mutex);
 
   if (_running) {
-    stopping = true;
     _running = false;
     lock.unlock();
     _cmds_condition.notify_one();
@@ -69,7 +92,6 @@ void timer_queue::stop() {
     slock.unlock();
   }
   _thread->join();
-  TRACE("<timer_queue> stopped");
 }
 
 void timer_queue::create_timer(timer_handle_t *timer, timer_func_t func, const char *name,
@@ -90,6 +112,20 @@ void timer_queue::send_cmd(timer_req_t&& req)
   _cmds_condition.notify_one();
 }
 
+bool timer_queue::send_cmd_async(timer_req_t&& req)
+{
+  {
+    std::unique_lock<std::mutex> lock(_cmds_mutex, std::try_to_lock);
+    if(!lock.owns_lock()) {
+      return false;  
+    }
+    _cmds.emplace_back(req);
+  }
+
+  _cmds_condition.notify_one();
+  return true;
+}
+
 void timer_queue::start_timer(timer_handle_t *timer) {
   send_cmd(timer_req_t{.cmd = timer_req_t::cmd_start, .timer = timer});
 }
@@ -105,27 +141,35 @@ void timer_queue::pend_function(timer_async_func_t func, void *param1,
       .func_call = {.func = func, .param1 = param1, .param2 = param2}});
 }
 
+bool timer_queue::async_stop() {
+  return send_cmd_async(timer_req_t{
+      .cmd = timer_req_t::cmd_stop_timer_queue});
+}
+
 void timer_queue::main_loop() {
 
   TRACE("<timer_queue> started");
   while (true) {
     {
       unique_lock lock(_cmds_mutex);
-      time_point_t until;
-      
       update_current_time();
       process_cmds();
 
+      if (!_running) break;
+
+      bool has_waited = false;
       if (_timers.size() > 0) {
         timer_handle_t* t = _timers[0];
-        until = t->next_trigger;
-      } else {
-        until = _current_time + std::chrono::milliseconds(1000);
+        if (t->active && t->next_trigger >= _current_time) {
+          has_waited = true;
+          _cmds_condition.wait_for(lock, t->next_trigger - _current_time);
+        }
       }
 
-      std::cv_status result = _cmds_condition.wait_until(lock, until);
-      // TRACE("<timer_queue> after wait_until");
+      if (!has_waited) { _cmds_condition.wait_for(lock, 500ms); }
       if (!_running) break;
+
+      update_current_time();
     }
 
     async_calls();
@@ -133,6 +177,7 @@ void timer_queue::main_loop() {
   }
 
   _stop_condition.notify_one();
+  TRACE("<timer_queue> stopped");
 }
 
 void timer_queue::process_cmds()
@@ -141,6 +186,11 @@ void timer_queue::process_cmds()
   while (!_cmds.empty()) {
     timer_req_t req = _cmds.back();
     _cmds.pop_back();
+
+    if (req.cmd == timer_req_t::cmd_stop_timer_queue) {
+      _running = false;
+      return;
+    }
 
     if (req.cmd == timer_req_t::cmd_pend_func) {
       if (req.func_call.func) {
@@ -151,7 +201,7 @@ void timer_queue::process_cmds()
       auto pos = std::find(_timers.begin(), _timers.end(), t);
       switch (req.cmd) {
       case timer_req_t::cmd_start:
-        t->next_trigger = _current_time + std::chrono::milliseconds(t->period);
+        t->next_trigger = _current_time + (t->period * 1ms);
         t->active = true;
         if (pos == _timers.end()) {
           _timers.emplace_back(t);
@@ -178,7 +228,7 @@ void timer_queue::trigger_timers() {
   for (auto t : _timers) {
     if (t->next_trigger <= _current_time) {
       if (t->repeat) {
-        t->next_trigger += std::chrono::milliseconds(t->period);
+        t->next_trigger += t->period * 1ms;
       } else {
         t->active = false;
         stop_timer(t);

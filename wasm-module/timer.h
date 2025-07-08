@@ -13,7 +13,7 @@ struct timer_handle_t;
 
 typedef void (*timer_func_t)(timer_handle_t*);
 typedef void (*timer_async_func_t)(void*, uint32_t);
-typedef std::chrono::time_point<std::chrono::steady_clock> time_point_t;
+typedef std::chrono::steady_clock::time_point time_point_t;
 
 struct timer_handle_t {
   timer_func_t func;
@@ -39,6 +39,7 @@ struct timer_req_t {
     cmd_start,
     cmd_stop,
     cmd_pend_func,
+    cmd_stop_timer_queue,
   };
 
   type cmd;
@@ -52,7 +53,7 @@ struct timer_req_t {
 class timer_queue {
 
   std::unique_ptr<std::thread> _thread;
-  bool _running = false;
+  std::atomic<bool> _running = {false};
 
   std::deque<timer_req_t> _cmds;
   std::mutex _cmds_mutex;
@@ -74,7 +75,10 @@ class timer_queue {
   void trigger_timers();
   void async_calls();
   void process_cmds();
+
   void send_cmd(timer_req_t&& req);
+  bool send_cmd_async(timer_req_t&& req);
+
   void stop();
 
 public:
@@ -83,6 +87,7 @@ public:
 
   static timer_queue &instance();
   static void destroy();
+  static bool async_destroy();
 
   static void create_timer(timer_handle_t *timer, timer_func_t func, const char *name,
                            unsigned period, bool repeat);
@@ -93,6 +98,8 @@ public:
   void stop_timer(timer_handle_t *timer);
 
   void pend_function(timer_async_func_t func, void* param1, uint32_t param2);
+
+  bool async_stop();
 };
 
 #endif // TIMER_H

@@ -1,12 +1,6 @@
+#include "imp_export.h"
 #include "log.h"
 #include "timer.h"
-
-#if __wasm__
-#define WASM_EXPORT_AS(name) __attribute__((export_name(name)))
-#define WASM_EXPORT(symbol) WASM_EXPORT_AS(#symbol) symbol
-#else
-#define WASM_EXPORT(symbol) symbol
-#endif
 
 timer_handle_t t1 = TIMER_INITIALIZER;
 timer_handle_t t2 = TIMER_INITIALIZER;
@@ -55,4 +49,8 @@ void WASM_EXPORT(stop_timers)() {
 void WASM_EXPORT(cleanup)() {
   TRACE("cleanup");
   timer_queue::destroy();
+}
+
+bool WASM_EXPORT(async_cleanup)() {
+  return timer_queue::async_destroy();
 }

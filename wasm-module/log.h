@@ -2,24 +2,16 @@
 #ifndef LOG_H
 #define LOG_H
 
-#include <chrono>
-#include <cstdio>
+#include "imp_export.h"
 
-// Global start time to track program start
-static const auto program_start = std::chrono::steady_clock::now();
-
-// Get milliseconds since program started
-inline unsigned long get_time_ms() {
-    auto now = std::chrono::steady_clock::now();
-    auto duration = std::chrono::duration_cast<std::chrono::microseconds>(now - program_start);
-    return duration.count() / 1000;
-}
-
-// TRACE macro that prints timestamp and formatted message
 #define TRACE(fmt, ...) \
     do { \
-        printf("[%6lums] " fmt "\n", get_time_ms(), ##__VA_ARGS__); \
-        fflush(stdout); \
+        char __buffer[256]; \
+        snprintf(__buffer, sizeof(__buffer), fmt, ##__VA_ARGS__); \
+        _log_func(__buffer, sizeof(__buffer)); \
     } while(0)
+
+
+void WASM_IMPORT(_log_func)(const char* buf, int buf_len);
 
 #endif // LOG_H
