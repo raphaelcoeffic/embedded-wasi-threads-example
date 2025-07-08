@@ -11,6 +11,12 @@
         _log_func(__buffer, sizeof(__buffer)); \
     } while(0)
 
+#define TRACE_VA(fmt, args) \
+    do { \
+        char __buffer[256]; \
+        vsnprintf(__buffer, sizeof(__buffer), fmt, args); \
+        _log_func(__buffer, sizeof(__buffer)); \
+    } while(0)
 
 void WASM_IMPORT(_log_func)(const char* buf, int buf_len);
 

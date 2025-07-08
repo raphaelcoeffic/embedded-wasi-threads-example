@@ -54,3 +54,12 @@ void WASM_EXPORT(cleanup)() {
 bool WASM_EXPORT(async_cleanup)() {
   return timer_queue::async_destroy();
 }
+
+void std::__libcpp_verbose_abort(char const* format, ...) {
+  va_list list;
+  va_start(list, format);
+  TRACE_VA(format, list);
+  va_end(list);
+
+  std::exit(1);
+}
