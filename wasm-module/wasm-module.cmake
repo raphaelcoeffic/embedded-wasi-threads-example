@@ -41,6 +41,8 @@ add_custom_command(TARGET wasm_module POST_BUILD
 )
 
 add_custom_command(TARGET wasm_module POST_BUILD
+    COMMAND ${CMAKE_COMMAND} -E make_directory
+        ${CMAKE_SOURCE_DIR}/web/public/
     COMMAND ${CMAKE_COMMAND} -E copy_if_different
         ${wasm_binary}
         ${CMAKE_SOURCE_DIR}/web/public/
