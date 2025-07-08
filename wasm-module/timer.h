@@ -87,7 +87,7 @@ public:
 
   static timer_queue &instance();
   static void destroy();
-  static bool async_destroy();
+  static bool destroy_async();
 
   static void create_timer(timer_handle_t *timer, timer_func_t func, const char *name,
                            unsigned period, bool repeat);
@@ -99,7 +99,10 @@ public:
 
   void pend_function(timer_async_func_t func, void* param1, uint32_t param2);
 
-  bool async_stop();
+  bool start_timer_async(timer_handle_t *timer);
+  bool stop_timer_async(timer_handle_t *timer);
+
+  bool stop_async();
 };
 
 #endif // TIMER_H

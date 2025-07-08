@@ -35,15 +35,15 @@ void WASM_EXPORT(create_timers)() {
 void WASM_EXPORT(start_timers)() {
   TRACE("starting timers");
   auto &tim = timer_queue::instance();
-  tim.start_timer(&t1);
-  tim.start_timer(&t2);
+  while (!tim.start_timer_async(&t1)) {}
+  while (!tim.start_timer_async(&t2)) {}
 }
 
 void WASM_EXPORT(stop_timers)() {
   TRACE("stopping timers");
   auto &tim = timer_queue::instance();
-  tim.stop_timer(&t1);
-  tim.stop_timer(&t2);
+  while (!tim.stop_timer_async(&t1)) {}
+  while (!tim.stop_timer_async(&t2)) {}
 }
 
 void WASM_EXPORT(cleanup)() {
@@ -52,7 +52,7 @@ void WASM_EXPORT(cleanup)() {
 }
 
 bool WASM_EXPORT(async_cleanup)() {
-  return timer_queue::async_destroy();
+  return timer_queue::destroy_async();
 }
 
 void std::__libcpp_verbose_abort(char const* format, ...) {

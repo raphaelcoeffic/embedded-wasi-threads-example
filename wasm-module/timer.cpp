@@ -47,7 +47,7 @@ void timer_queue::destroy()
   _instance = nullptr;
 }
 
-bool timer_queue::async_destroy()
+bool timer_queue::destroy_async()
 {
   std::unique_lock<std::mutex> lock(_instance_mut, std::try_to_lock);
   if(!lock.owns_lock()) {
@@ -56,7 +56,7 @@ bool timer_queue::async_destroy()
 
   if (_instance) {
     if (_instance->_running) {
-      if (!_instance->async_stop() || _async_stop.valid()) {
+      if (!_instance->stop_async() || _async_stop.valid()) {
         return false;
       }
       _async_stop =
@@ -141,7 +141,17 @@ void timer_queue::pend_function(timer_async_func_t func, void *param1,
       .func_call = {.func = func, .param1 = param1, .param2 = param2}});
 }
 
-bool timer_queue::async_stop() {
+bool timer_queue::start_timer_async(timer_handle_t *timer)
+{
+  return send_cmd_async(timer_req_t{.cmd = timer_req_t::cmd_start, .timer = timer});
+}
+
+bool timer_queue::stop_timer_async(timer_handle_t *timer)
+{
+  return send_cmd_async(timer_req_t{.cmd = timer_req_t::cmd_stop, .timer = timer});
+}
+
+bool timer_queue::stop_async() {
   return send_cmd_async(timer_req_t{
       .cmd = timer_req_t::cmd_stop_timer_queue});
 }
