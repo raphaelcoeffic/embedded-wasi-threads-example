@@ -40,3 +40,9 @@ add_custom_command(TARGET wasm_module POST_BUILD
     COMMENT "Copying module.wasm to build directory"
 )
 
+add_custom_command(TARGET wasm_module POST_BUILD
+    COMMAND ${CMAKE_COMMAND} -E copy_if_different
+        ${wasm_binary}
+        ${CMAKE_SOURCE_DIR}/web/public/
+    COMMENT "Copying module.wasm to web/public directory"
+)
