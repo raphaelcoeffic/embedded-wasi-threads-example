@@ -83,14 +83,10 @@ void timer_queue::start()
 
 void timer_queue::stop() {
   unique_lock lock(_cmds_mutex);
-  unique_lock slock(_stop_mutex);
-
   if (_running) {
     _running = false;
     lock.unlock();
     _cmds_condition.notify_one();
-    _stop_condition.wait(slock);
-    slock.unlock();
   }
   _thread->join();
 }
@@ -186,8 +182,6 @@ void timer_queue::main_loop() {
     async_calls();
     trigger_timers();
   }
-
-  _stop_condition.notify_one();
   TRACE("<timer_queue> stopped");
 }
 
