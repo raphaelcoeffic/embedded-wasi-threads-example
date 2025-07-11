@@ -65,6 +65,7 @@ bool timer_queue::destroy_async()
                _async_stop.wait_for(0s) == std::future_status::ready) {
       delete _instance;
       _instance = nullptr;
+      _async_stop = {};
     }
   }
 

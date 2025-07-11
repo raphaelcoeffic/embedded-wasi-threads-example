@@ -25,7 +25,6 @@ private:
   std::shared_ptr<WASMModuleInstanceCommon> module_inst;
   std::shared_ptr<WASMExecEnv> exec_env;
 
-  wasm_function_inst_t call_ctors_func = nullptr;
   wasm_function_inst_t get_module_name_func = nullptr;
   wasm_function_inst_t get_counters_func = nullptr;
   wasm_function_inst_t create_timers_func = nullptr;
@@ -151,7 +150,6 @@ public:
       return false;
     }
 
-    call_ctors_func = lookup_function("__wasm_call_ctors");
     get_module_name_func = lookup_function("get_module_name");
     get_counters_func = lookup_function("get_counters");
     create_timers_func = lookup_function("create_timers");
@@ -160,20 +158,15 @@ public:
     cleanup_func = lookup_function("cleanup");
     async_cleanup_func = lookup_function("async_cleanup");
 
-    if (!call_ctors_func || !get_module_name_func || !get_counters_func ||
-        !create_timers_func || !start_timers_func || !stop_timers_func ||
-        !cleanup_func || !async_cleanup_func) {
+    if (!get_module_name_func || !get_counters_func || !create_timers_func ||
+        !start_timers_func || !stop_timers_func || !cleanup_func ||
+        !async_cleanup_func) {
       std::cerr << "Failed to find one or more exported function(s)"
                 << std::endl;
       return false;
     }
 
     return true;
-  }
-
-  void start() {
-    std::cout << "Executing __wasm_call_ctors" << std::endl;
-    check_call(call_ctors_func, 0, nullptr);
   }
 
   std::string get_module_name() {
@@ -270,9 +263,8 @@ int main(int argc, char *argv[]) {
     }
     std::cout << "WASM module loaded" << std::endl;
 
-    runner.start();
-
-    std::cout << "Module name: " << runner.get_module_name() << std::endl;
+    std::string module_name{runner.get_module_name()};
+    std::cout << "Module name: " << module_name << std::endl;
 
     runner.create_timers();
     runner.start_timers();

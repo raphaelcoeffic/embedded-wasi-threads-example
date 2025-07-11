@@ -38,8 +38,7 @@ class WasmRunner {
       if (!response.ok) {
         throw new Error(`Failed to fetch WASM: ${response.statusText}`);
       }
-      const wasmBuffer = await response.arrayBuffer();
-      
+
       // Create import object
       const memory = new WebAssembly.Memory({
         initial: 1048576 / 65536,
@@ -51,7 +50,7 @@ class WasmRunner {
       this.updateStatus('Instantiating WASM module...');
 
       const wasi = this.wasiThreads.wasi;
-      let { module, instance } = await WebAssembly.instantiate(wasmBuffer, {
+      let { module, instance } = await WebAssembly.instantiateStreaming(response, {
         wasi_snapshot_preview1: wasi.wasiImport as WebAssembly.ModuleImports,
         wasi: { ...this.wasiThreads.getImportObject().wasi },
         env: {
@@ -91,7 +90,6 @@ class WasmRunner {
       this.updateStatus('Running WASM module...');
       const exports = this.instance.exports as WasmExports;
 
-      exports.__wasm_call_ctors();
       const name = this.readCString(exports.get_module_name());
       this.appendOutput(`Module name: ${name}`);
 
@@ -133,7 +131,7 @@ class WasmRunner {
         this.appendOutput(`Thread ${tid} finished`)
       }
     } else if (e?.data && typeof e.data === 'string') {
-      this.appendOutput(e.data);
+      this.appendOutput(`WASM: ${e.data}`);
     }
   }
 
@@ -197,7 +195,6 @@ async function main() {
   const runner = new WasmRunner();
 
   // Load your WASM module - update the path to your actual WASM file
-  // await runner.loadWasm('./module.wasm');
   await runner.loadWasm('./module.wasm');
 }
 

@@ -55,6 +55,11 @@ bool WASM_EXPORT(async_cleanup)() {
   return timer_queue::destroy_async();
 }
 
+__attribute__((constructor))
+void static_init() {
+  _log_func("static_init() called", 21);
+}
+
 void std::__libcpp_verbose_abort(char const* format, ...) {
   va_list list;
   va_start(list, format);

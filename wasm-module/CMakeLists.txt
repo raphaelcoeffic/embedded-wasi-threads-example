@@ -22,13 +22,12 @@ set(WASM_LINK_FLAGS
     -Wl,--import-memory
     -Wl,--export-memory
     -Wl,--max-memory=2147483648
-    -Wl,--no-entry
     -Wl,--gc-sections
     # enable runtime to check stack / heap
     -Wl,--export=__heap_base,--export=__data_end
     -Wl,--export=malloc -Wl,--export=free
-    # static init
-    -Wl,--export=__wasm_call_ctors
+    # no main()
+    -mexec-model=reactor
 )
 
 # Debug vs Release flags
