@@ -6,9 +6,9 @@ set(SOURCES
     timer.cpp
 )
 
-add_executable(module.wasm ${SOURCES})
+add_executable(module ${SOURCES})
 
-target_compile_features(module.wasm PRIVATE cxx_std_14)
+target_compile_features(module PRIVATE cxx_std_14)
 
 set(WASM_COMMON_FLAGS
     -fno-exceptions
@@ -41,15 +41,15 @@ else()
 endif()
 
 # Apply all flags
-target_compile_options(module.wasm PRIVATE 
+target_compile_options(module PRIVATE 
     ${WASM_COMMON_FLAGS}
     ${WASM_BUILD_FLAGS}
 )
 
-target_link_options(module.wasm PRIVATE ${WASM_LINK_FLAGS})
+target_link_options(module PRIVATE ${WASM_LINK_FLAGS})
 
 # Ensure output has .wasm extension
-set_target_properties(module.wasm PROPERTIES SUFFIX "")
+set_target_properties(module PROPERTIES SUFFIX ".wasm")
 
 message(STATUS "WASM Module Configuration:")
 message(STATUS "  Build type: ${CMAKE_BUILD_TYPE}")
